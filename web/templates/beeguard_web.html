@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#193b30">
-<meta name="description" content="BeeGuard: acompanhamento acústico de colmeias, ciclos de coleta e alertas de alterações.">
-<title>BeeGuard · Monitoramento de colmeias</title>
+<meta name="description" content="ZumZumBeedo: acompanhamento acústico de colmeias, ciclos de coleta e alertas de alterações.">
+<title>ZumZumBeedo · Monitoramento de colmeias</title>
 <link rel="stylesheet" href="/static/beeguard.css">
 <script src="/static/beeguard.js" defer></script>
 </head>
 <body>
 <aside class="sidebar">
-<a class="brand" href="/" aria-label="BeeGuard início"><svg viewBox="0 0 40 44" width="36" height="40" aria-hidden="true"><path d="M20 2 37 12v20L20 42 3 32V12Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M13 14h10a5 5 0 0 1 0 10H13m0-10v17h11a5 5 0 0 0 0-10H13" fill="none" stroke="currentColor" stroke-width="2.7"/></svg><span>BeeGuard<small>OUVIR PARA CUIDAR</small></span></a>
+<a class="brand" href="/" aria-label="ZumZumBeedo início"><svg viewBox="0 0 40 44" width="36" height="40" aria-hidden="true"><path d="M20 2 37 12v20L20 42 3 32V12Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 14h16L12 30h16" fill="none" stroke="currentColor" stroke-width="2.7"/></svg><span>ZumZumBeedo<small>OUVIR PARA CUIDAR</small></span></a>
 <p class="nav-label">ESPAÇO DE MONITORAMENTO</p>
 <nav aria-label="Navegação principal">
 <a href="#overview" class="nav-item active">◉ <span>Visão geral</span></a>
@@ -18,7 +18,7 @@
 <a href="#alerts-section" class="nav-item">♧ <span>Alertas</span><b id="nav-alert-count">0</b></a>
 <a href="#inspections-section" class="nav-item">▤ <span>Inspeções</span></a>
 </nav>
-<div class="sidebar-bottom"><div class="school-tag">PROJETO ESCOLAR</div><p>Cada colmeia tem uma voz.<br>Acompanhe suas mudanças.</p><span class="version">BeeGuard · Monitoramento acústico</span></div>
+<div class="sidebar-bottom"><div class="school-tag">PROJETO ESCOLAR</div><p>Cada colmeia tem uma voz.<br>Acompanhe suas mudanças.</p><span class="version">ZumZumBeedo · Monitoramento acústico</span></div>
 </aside>
 <main id="overview">
 <header class="topbar"><span>PAINEL DE ACOMPANHAMENTO</span><span id="connection" class="connection" role="status"><i></i> Conectando…</span></header>
@@ -34,7 +34,7 @@
 <div class="hives-panel"><div class="section-title"><h2>Suas colmeias</h2><span id="hive-count">00</span></div><div id="hive-list"></div></div>
 <div class="detail-panel">
 <div class="panel detail-heading"><div><span class="eyebrow" id="selected-code">ESCOLHA UMA COLMEIA</span><h2 id="selected-name">Comece pelo seu apiário</h2><p id="selected-location">Cadastre uma colmeia para iniciar o acompanhamento.</p></div><span id="hive-status" class="badge">Sem coleta</span></div>
-<div class="panel cycle-panel"><div class="section-title"><h3>Ciclo de acompanhamento</h3><button class="button small" id="new-cycle" disabled>+ Novo ciclo</button></div><div class="cycle-controls"><label for="cycle-select" class="sr-only">Selecionar ciclo</label><select id="cycle-select" disabled><option>Nenhum ciclo</option></select><button class="button small danger-outline" id="end-cycle" disabled>Encerrar ciclo</button></div><p id="cycle-info" class="muted">Cada ciclo guarda sua própria referência e seu histórico.</p><div class="progress-track"><div id="calibration-progress"></div></div><div id="collector-setup" hidden><p class="muted">Para coletar com o ESP32, execute no computador conectado ao dispositivo:</p><code id="collector-command"></code><button id="copy-command" class="text-button">Copiar comando</button></div></div>
+<div class="panel cycle-panel"><div class="section-title"><h3>Ciclo de acompanhamento</h3><button class="button small" id="new-cycle" disabled>+ Novo ciclo</button></div><div class="cycle-controls"><label for="cycle-select" class="sr-only">Selecionar ciclo</label><select id="cycle-select" disabled><option>Nenhum ciclo</option></select><button class="button small danger-outline" id="end-cycle" disabled>Encerrar ciclo</button></div><p id="cycle-info" class="muted">Cada ciclo guarda sua própria referência e seu histórico.</p><div class="progress-track"><div id="calibration-progress"></div></div><p id="device-setup" class="muted"></p><div id="collector-setup" hidden><p class="muted">Coleta alternativa por USB: execute no computador conectado ao dispositivo:</p><code id="collector-command"></code><button id="copy-command" class="text-button">Copiar comando</button></div></div>
 <div class="metrics"><div class="panel"><span>Alteração da referência</span><strong id="change-score">—</strong><small id="previous-score">Aguardando comparação</small></div><div class="panel"><span>Frequência dominante</span><strong id="frequency">—</strong><small id="rms">Aguardando áudio</small></div><div class="panel"><span>Última coleta</span><strong class="time-value" id="last-time">—</strong><small id="sample-status">Sem dados neste ciclo</small></div></div>
 <div class="panel chart-panel"><div class="section-title"><div><h3>O que mudou no som?</h3><p class="muted">Índice acústico de 0 a 100% · não é um percentual de saúde.</p></div><span class="legend"><i class="amber-dot"></i> Alteração</span></div><svg id="change-chart" viewBox="0 0 800 220" role="img" aria-label="Gráfico de alteração acústica ao longo das coletas"></svg><div class="chart-caption"><span id="chart-start">Início do ciclo</span><span id="chart-end">Agora</span></div></div>
 <div class="panel"><div class="section-title"><div><h3>Assinatura acústica</h3><p class="muted">Energia relativa em 32 faixas de frequência.</p></div><div class="legend"><span class="green-dot"></span> Referência <span class="amber-dot"></span> Atual</div></div><svg id="spectrum-chart" viewBox="0 0 800 145" role="img" aria-label="Comparação do espectro atual com a referência do ciclo"></svg></div>
@@ -46,7 +46,7 @@
 <section class="panel" id="alerts-section"><div class="section-title"><div><span class="eyebrow">ATENÇÃO AOS SINAIS</span><h2>Central de alertas</h2></div><button class="button small" id="enable-notifications">Ativar notificações</button></div><p class="muted">Os alertas ficam salvos. As notificações do navegador funcionam enquanto o painel está aberto.</p><div id="alert-list"></div></section>
 <section class="panel" id="inspections-section"><div class="section-title"><div><span class="eyebrow">DO SOM À OBSERVAÇÃO</span><h2>Inspeções da colmeia</h2></div><button class="button small" id="new-inspection" disabled>+ Registrar</button></div><p class="muted">Registre a condição observada para formar uma base de áudios rotulados. Uma referência sonora não confirma a saúde da colmeia.</p><div id="inspection-list"></div></section>
 </div>
-<footer>BeeGuard <span>·</span> Escuta, observação e cuidado com as abelhas.<span class="footer-note">Atualização automática a cada 3 segundos.</span></footer>
+<footer>ZumZumBeedo <span>·</span> Escuta, observação e cuidado com as abelhas.<span class="footer-note">Atualização automática a cada 3 segundos.</span></footer>
 </main>
 <dialog id="dialog"><div id="dialog-content"></div></dialog>
 <div id="toast" role="status" hidden></div>

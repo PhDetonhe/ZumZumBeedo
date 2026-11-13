@@ -2,6 +2,10 @@
 import csv
 import io
 import json
+import base64
+import re
+import struct
+import zlib
 import tempfile
 import threading
 import unittest
@@ -272,6 +276,86 @@ class WebFlow(unittest.TestCase):
             worker.join()
             server.server_close()
 
+    def device_headers(self, hive="BG01"):
+        return {"X-Hive-Id": hive,
+                "X-Cycle-Id": self.cid, "X-Recording-Id": str(uuid.uuid4()),
+                "X-Captured-At": (self.time + timedelta(seconds=10)).isoformat()}
+
+    def test_device_config_starts_and_stops_with_dashboard_cycle(self):
+        headers = self.device_headers()
+        response = self.client.get("/api/device/config", headers=headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json["recording_enabled"])
+        self.assertEqual(response.json["cycle_id"], self.cid)
+        self.assertEqual(response.json["sample_rate"], 16000)
+        self.client.post("/api/cycles/" + self.cid + "/end")
+        response = self.client.get("/api/device/config", headers=headers)
+        self.assertFalse(response.json["recording_enabled"])
+        self.assertIsNone(response.json["cycle_id"])
+
+    def test_device_routes_validate_hive_and_accept_upload_without_credentials(self):
+        good = self.device_headers()
+        for hive, status in (("", 400), ("../invalid", 400), ("UNKNOWN", 404)):
+            headers = {**good, "X-Hive-Id": hive}
+            self.assertEqual(self.client.get("/api/device/config", headers=headers).status_code, status)
+            self.assertEqual(self.client.post("/api/device/audio", data=tone(), headers=headers).status_code, status)
+        self.assertEqual(self.recordings(), [])
+        self.assertEqual(self.client.post("/api/device/audio", data=tone(), headers=good).status_code, 201)
+        self.assertEqual(self.send()[0].status_code, 201)
+
+    def test_device_retry_after_restart_and_cycle_end_preserves_original_cycle(self):
+        headers = self.device_headers()
+        response = self.client.post("/api/device/audio", data=tone(), headers=headers)
+        self.assertEqual(response.status_code, 201, response.json)
+        self.client.post("/api/cycles/" + self.cid + "/end")
+        fresh = create_app(Store(database_url="", sqlite_path=self.root / "monitor.db", cloud=False))
+        with fresh.test_client() as client:
+            retry = client.post("/api/device/audio", data=tone(), headers=headers)
+            self.assertEqual(retry.status_code, 200)
+            self.assertEqual(retry.json["status"], "already_stored")
+            self.assertEqual(retry.json["cycle_id"], self.cid)
+            self.assertEqual(client.get("/api/recordings").json["total"], 1)
+        # An unsent WAV captured before closure can still be delivered afterwards.
+        headers["X-Recording-Id"] = str(uuid.uuid4())
+        self.assertEqual(self.client.post("/api/device/audio", data=tone(), headers=headers).status_code, 201)
+        headers["X-Recording-Id"] = str(uuid.uuid4())
+        headers["X-Captured-At"] = (datetime.now(timezone.utc) + timedelta(seconds=2)).isoformat()
+        self.assertEqual(self.client.post("/api/device/audio", data=tone(), headers=headers).status_code, 409)
+
+    def test_device_requires_explicit_cycle_and_rejects_cross_hive_cycle(self):
+        headers = self.device_headers()
+        no_cycle = {key: value for key, value in headers.items() if key != "X-Cycle-Id"}
+        self.assertEqual(self.client.post("/api/device/audio", data=tone(), headers=no_cycle).status_code, 400)
+        self.register("BG02", "Outra colmeia")
+        headers["X-Cycle-Id"] = self.cycle("BG02")
+        self.assertEqual(self.client.post("/api/device/audio", data=tone(), headers=headers).status_code, 409)
+        self.assertEqual(self.recordings(), [])
+
+    def test_spectrogram_is_derived_from_durable_wav_and_has_frequency_axis(self):
+        _, headers = self.send(frequency=250)
+        rid = headers["X-Recording-Id"]
+        row = self.recordings()[0]
+        self.assertEqual(row["spectrogram_url"], "/api/recordings/" + rid + "/spectrogram")
+        fresh = create_app(Store(database_url="", sqlite_path=self.root / "monitor.db", cloud=False)).test_client()
+        response = fresh.get(row["spectrogram_url"])
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "image/svg+xml")
+        png = base64.b64decode(re.search(rb"base64,([^\"]+)", response.data).group(1))
+        self.assertEqual(png[:8], b"\x89PNG\r\n\x1a\n")
+        width, height = struct.unpack(">II", png[16:24])
+        self.assertEqual((width, height), (200, 257))
+        compressed = b""
+        position = 8
+        while position < len(png):
+            length = struct.unpack(">I", png[position:position + 4])[0]
+            if png[position + 4:position + 8] == b"IDAT":
+                compressed += png[position + 8:position + 8 + length]
+            position += 12 + length
+        scanlines = np.frombuffer(zlib.decompress(compressed), dtype=np.uint8).reshape(height, 1 + width * 3)
+        pixels = scanlines[:, 1:].reshape(height, width, 3)
+        brightest_row = pixels.astype(float).sum(axis=2).mean(axis=1).argmax()
+        self.assertAlmostEqual((height - 1 - brightest_row) * 16000 / 512, 250, delta=32)
+        self.assertEqual(fresh.get("/api/recordings/missing/spectrogram").status_code, 404)
 
 if __name__ == "__main__":
     unittest.main()

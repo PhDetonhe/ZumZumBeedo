@@ -71,6 +71,7 @@ function renderDetail(){
   $("cycle-info").textContent=cycle ? (cycle.ended_at?"Encerrado em "+date(cycle.ended_at)+". Histórico preservado.":cycle.baseline?"Referência formada com "+cycle.baseline_count+" áudios. Alerta a partir de "+cycle.threshold+"% em "+cycle.consecutive_samples+" coletas consecutivas.":"Formando referência: "+cycle.baseline_count+"/"+cycle.calibration_samples+" áudios válidos. Mantenha o microfone na mesma posição.") : "Cada ciclo guarda sua própria referência e seu histórico.";
   $("calibration-progress").style.width=cycle ? Math.min(100,cycle.baseline_count/cycle.calibration_samples*100)+"%" : "0%";
   $("collector-setup").hidden=!cycle || !!cycle.ended_at;
+  $("device-setup").textContent=hive ? 'ESP32 por Wi-Fi: use o firmware BeeGuardWiFi com servidor '+location.origin+' e código da colmeia '+hive.id+'. Ao ligar, a placa grava enquanto houver um ciclo ativo. Encerrar o ciclo interrompe novas capturas na próxima consulta.' : '';
   $("collector-command").textContent=cycle ? '.\\.venv-web\\Scripts\\python.exe run.py capture_field --session '+cycle.id+' --port COM6 --server '+location.origin : "";
   const score=latest?.comparison?.score;
   $("change-score").textContent=score==null?"—":Math.round(score)+"%";
@@ -90,7 +91,7 @@ function renderDetail(){
 function renderTable(data){
   state.total=data.total;
   $("recording-summary").textContent=currentCycle() ? data.total+" coletas neste ciclo · áudios originais preservados." : "Selecione um ciclo para consultar os áudios.";
-  $("recording-rows").innerHTML=data.recordings.length ? data.recordings.map(r=>'<tr><td>'+esc(date(r.captured_at))+'</td><td>'+r.features.rms.toFixed(5)+'</td><td>'+Math.round(r.features.dominant_frequency_hz)+' Hz</td><td>'+(r.comparison.score==null?"—":r.comparison.score.toFixed(1)+"%")+'</td><td><span class="badge '+(r.status==="changed"?"warning":r.status==="quality_review"?"error":"")+'">'+esc(statusNames[r.status] || r.status)+'</span></td><td><button class="button small" data-listen="'+r.id+'">▷ Ouvir</button></td></tr>').join("") : '<tr><td colspan="6" class="empty">Nenhuma coleta neste ciclo. Inicie a captura ou envie um WAV.</td></tr>';
+  $("recording-rows").innerHTML=data.recordings.length ? data.recordings.map(r=>'<tr><td>'+esc(date(r.captured_at))+'</td><td>'+r.features.rms.toFixed(5)+'</td><td>'+Math.round(r.features.dominant_frequency_hz)+' Hz</td><td>'+(r.comparison.score==null?"—":r.comparison.score.toFixed(1)+"%")+'</td><td><span class="badge '+(r.status==="changed"?"warning":r.status==="quality_review"?"error":"")+'">'+esc(statusNames[r.status] || r.status)+'</span></td><td><button class="button small" data-listen="'+r.id+'">▷ Ouvir</button> <a href="'+esc(r.spectrogram_url)+'" target="_blank" rel="noopener">Espectrograma</a></td></tr>').join("") : '<tr><td colspan="6" class="empty">Nenhuma coleta neste ciclo. Inicie a captura ou envie um WAV.</td></tr>';
   $("page-info").textContent="Página "+(Math.floor(state.offset/20)+1)+" de "+Math.max(1,Math.ceil(data.total/20));
   $("prev-page").disabled=state.offset===0;
   $("next-page").disabled=state.offset+20>=data.total;
@@ -104,7 +105,7 @@ function renderAlerts(data){
       if(!state.seen.has(a.id)&&!a.acknowledged_at){
         toast(a.message);
         if("Notification" in window && Notification.permission==="granted"){
-          try{new Notification("BeeGuard · Alteração acústica",{body:a.message,tag:a.id});}catch{}
+          try{new Notification("ZumZumBeedo · Alteração acústica",{body:a.message,tag:a.id});}catch{}
         }
       }
     }
@@ -196,7 +197,8 @@ async function sendPending(){
   $("retry-audio").disabled=true;
   $("capture-status").textContent="Enviando áudio de "+pending.hive+"…";
   try{
-    const result=await api("/api/audio",{method:"POST",headers:{"Content-Type":"audio/wav","X-Hive-Id":pending.hive,"X-Cycle-Id":pending.cycle,"X-Recording-Id":pending.id,"X-Captured-At":pending.captured},body:pending.blob});
+    const headers={"Content-Type":"audio/wav","X-Hive-Id":pending.hive,"X-Cycle-Id":pending.cycle,"X-Recording-Id":pending.id,"X-Captured-At":pending.captured};
+    const result=await api("/api/audio",{method:"POST",headers,body:pending.blob});
     if(result.id!==pending.id||result.storage!=="ok")throw Error("O servidor não confirmou o armazenamento.");
     state.pending=null;
     pendingVisible();

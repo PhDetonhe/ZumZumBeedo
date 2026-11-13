@@ -1,4 +1,4 @@
-﻿# BeeGuard — monitoramento de colmeias
+# ZumZumBeedo — monitoramento de colmeias
 
 Painel web em Flask para cadastrar colmeias, iniciar ciclos, receber áudios e acompanhar alterações acústicas. O servidor atual é `src/beeguard_web.py`, iniciado por `app.py` ou `run.py`.
 
@@ -25,7 +25,7 @@ Abra http://127.0.0.1:5000. O painel e `/monitor` usam a aplicação nova; `/hea
 
 1. Cadastre uma colmeia com código e nome.
 2. Inicie um ciclo e configure a quantidade de áudios de referência, o limite de alteração e quantas alterações consecutivas geram alerta.
-3. Use o microfone do navegador, envie um WAV ou copie o comando do coletor ESP32 mostrado no painel.
+3. Use a ESP32 por Wi-Fi com o [guia de instalação autônoma](docs/ESP32_WIFI.md), o microfone do navegador, um WAV ou o coletor USB alternativo mostrado no painel.
 4. Acompanhe comparações com a referência e com a coleta anterior, gráficos, áudios originais e alertas. O painel consulta atualizações a cada 3 segundos.
 5. Registre inspeções como saudável, doente ou condição não confirmada e exporte o CSV para construir uma base rotulada.
 6. Encerre o ciclo para preservar o histórico e iniciar outra referência.
@@ -51,7 +51,9 @@ Os testes web exercitam persistência, ciclos independentes, comparação acúst
 
 ## Preparação para Vercel
 
-`app.py`, `requirements.txt` e `vercel.json` já estão presentes. A aplicação exige `DATABASE_URL` apontando para PostgreSQL persistente quando está na Vercel; SQLite local não é usado nesse ambiente. O banco guarda também os WAVs. O coletor ESP32 continua rodando no computador conectado ao dispositivo e envia ao endereço hospedado. A implantação e a conexão com um PostgreSQL real ainda precisam ser validadas.
+`app.py`, `requirements.txt` e `vercel.json` já estão presentes. A aplicação exige `DATABASE_URL` apontando para PostgreSQL persistente quando está na Vercel; SQLite local não é usado nesse ambiente. O banco guarda os WAVs em `bg_samples.audio` e as análises em campos JSON. Os espectrogramas são recriados a partir desses WAVs e acessíveis no histórico.
+
+O firmware **BeeGuardWiFi** envia diretamente por HTTPS à Vercel, sem coletor no computador, e inicia a gravação ao ligar a placa quando há ciclo ativo. Configure o Wi-Fi, o endereço do servidor e o código da colmeia na placa. O [guia ESP32 + Vercel + Neon](docs/ESP32_WIFI.md) explica ligações, configuração, início/parada e reenvio. O firmware **BeeGuardAI** e `capture_field` continuam como alternativa por USB.
 
 ## Alcance da análise
 

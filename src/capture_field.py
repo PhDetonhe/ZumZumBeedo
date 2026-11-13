@@ -33,9 +33,10 @@ def enqueue(pcm,session,folder,captured=None):
 def upload(marker,server):
     marker=Path(marker);meta=json.loads(marker.read_text(encoding='utf-8'));path=marker.parent/meta['wav']
     if path.resolve().parent!=marker.parent.resolve():raise ValueError('Caminho de fila inválido')
-    req=urllib.request.Request(server.rstrip('/')+'/api/audio',data=path.read_bytes(),method='POST',headers={
+    headers={
         'Content-Type':'audio/wav','X-Recording-Id':meta['id'],'X-Hive-Id':meta['hive_id'],
-        'X-Captured-At':meta['captured_at'],'X-Session-Id':meta['session_id']})
+        'X-Captured-At':meta['captured_at'],'X-Session-Id':meta['session_id']}
+    req=urllib.request.Request(server.rstrip('/')+'/api/audio',data=path.read_bytes(),method='POST',headers=headers)
     with urllib.request.urlopen(req,timeout=15) as response:result=json.load(response)
     if (result.get('mysql')!='ok' and result.get('storage')!='ok') or result.get('id')!=meta['id'] or result.get('session_id')!=meta['session_id']:
         raise ValueError('Servidor não confirmou áudio E sessão; fila preservada')

@@ -1,4 +1,5 @@
 """Web monitoring: durable cycles, acoustic comparisons and observation labels."""
+import base64
 import csv
 import hashlib
 import io
@@ -7,9 +8,11 @@ import math
 import os
 import re
 import sqlite3
+import struct
 import threading
 import uuid
 import wave
+import zlib
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -209,7 +212,36 @@ def sample_json(row):
     for key in ("quality", "features", "comparison"):
         row[key] = json.loads(row.pop(key + "_json"))
     row["audio_url"] = "/api/recordings/" + row["id"] + "/audio"
+    row["spectrogram_url"] = "/api/recordings/" + row["id"] + "/spectrogram"
     return row
+
+
+def spectrogram_svg(payload):
+    """Render from the durable WAV; no files or plotting runtime on Vercel."""
+    with wave.open(io.BytesIO(payload), "rb") as wav:
+        audio = np.frombuffer(wav.readframes(WINDOW), dtype="<i2").astype(float) / 32768
+    _, _, spectrum = stft(audio, RATE, nperseg=512, noverlap=256, boundary=None, padded=False)
+    db = 20 * np.log10(np.maximum(np.abs(spectrum), 1e-9))
+    # Preserve the loudest bin in each time group, then show 0–8 kHz.
+    db = np.stack([group.max(axis=1) for group in np.array_split(db, 200, axis=1)], axis=1)[::-1]
+    level = np.clip((db + 90) / 90, 0, 1)
+    stops = np.array([[20, 17, 55], [70, 35, 120], [180, 55, 90], [245, 145, 45], [255, 245, 170]])
+    colors = np.stack([np.interp(level, np.linspace(0, 1, len(stops)), stops[:, i]) for i in range(3)], axis=-1).astype(np.uint8)
+    height, width, _ = colors.shape
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+    scanlines = b"".join(b"\x00" + row.tobytes() for row in colors)
+    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+           + chunk(b"IDAT", zlib.compress(scanlines)) + chunk(b"IEND", b""))
+    encoded = base64.b64encode(png).decode("ascii")
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 420" role="img" aria-labelledby="title desc">
+<title id="title">Espectrograma da gravação</title><desc id="desc">Tempo de 0 a 10 segundos, frequência de 0 a 8000 Hz. Cores claras indicam maior amplitude.</desc>
+<rect width="900" height="420" fill="#fff"/><g font-family="sans-serif" fill="#193b30">
+<text x="65" y="30" font-size="20">ZumZumBeedo · Espectrograma</text>
+<image x="65" y="50" width="800" height="290" preserveAspectRatio="none" href="data:image/png;base64,{encoded}"/>
+<g font-size="13"><text x="10" y="60">8 kHz</text><text x="10" y="200">4 kHz</text><text x="20" y="340">0 Hz</text>
+<text x="65" y="363">0 s</text><text x="455" y="363">5 s</text><text x="835" y="363">10 s</text>
+<text x="65" y="395">Amplitude STFT: escuro ≤ −90 dBFS · claro ≥ 0 dBFS</text></g></g></svg>'''
 
 
 def describe(payload):
@@ -342,6 +374,12 @@ def create_app(store=None):
     store = store or Store()
     app.extensions["beeguard_store"] = store
 
+    def device_hive():
+        hive_id = request.headers.get("X-Hive-Id", "")
+        if not IDENTIFIER.fullmatch(hive_id):
+            raise ValueError("X-Hive-Id inválido.")
+        return hive_id
+
     @app.errorhandler(ValueError)
     @app.errorhandler(TypeError)
     def invalid(exc):
@@ -466,6 +504,23 @@ def create_app(store=None):
         result, status = ingest(store, request.get_data(), request.headers)
         return jsonify(result), status
 
+    @app.get("/api/device/config")
+    def device_config():
+        hive_id = device_hive()
+        with store.transaction() as con:
+            store.hive(con, hive_id)
+            cycle = store.one(con, "SELECT id FROM bg_cycles WHERE hive_id=? AND ended_at IS NULL", (hive_id,))
+        return jsonify(hive_id=hive_id, cycle_id=cycle["id"] if cycle else None,
+                       recording_enabled=bool(cycle), sample_rate=RATE, recording_seconds=10,
+                       server_time=now_iso())
+
+    @app.post("/api/device/audio")
+    def device_audio():
+        device_hive()
+        if not request.headers.get("X-Cycle-Id"):
+            raise ValueError("X-Cycle-Id é obrigatório para preservar o ciclo da captura.")
+        result, status = ingest(store, request.get_data(), request.headers)
+        return jsonify(result), status
 
     def filters(con):
         clauses, params = [], []
@@ -496,6 +551,14 @@ def create_app(store=None):
         if not row:
             raise DomainError("Áudio não encontrado.", 404)
         return send_file(io.BytesIO(bytes(row["audio"])), mimetype="audio/wav", download_name=recording_id + ".wav")
+
+    @app.get("/api/recordings/<recording_id>/spectrogram")
+    def spectrogram(recording_id):
+        with store.transaction() as con:
+            row = store.one(con, "SELECT audio FROM bg_samples WHERE id=?", (recording_id,))
+        if not row:
+            raise DomainError("Áudio não encontrado.", 404)
+        return Response(spectrogram_svg(bytes(row["audio"])), mimetype="image/svg+xml")
 
     @app.get("/api/alerts")
     def alerts():
