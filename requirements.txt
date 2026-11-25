@@ -1,0 +1,7 @@
+# Web runtime. Legacy research: requirements/requirements_jatai.txt
+Flask>=3.1,<4
+numpy>=1.26,<3
+scipy>=1.12,<2
+psycopg[binary]>=3.2,<4
+waitress>=3,<4
+pyserial>=3.5,<4

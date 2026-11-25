@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "flask",
+  "functions": {
+    "app.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{.venv/**,.venv-web/**,tests/**,data/**,firmware/**,docs/**,config/**,reports/**,models/**,artifacts/**,**/__pycache__/**}"
+    }
+  }
+}
