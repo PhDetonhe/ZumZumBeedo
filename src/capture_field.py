@@ -13,11 +13,13 @@ from pathlib import Path
 import serial
 from acquisition.capture_audio import read_exact,wait_header,BAUD_RATE,SAMPLE_RATE,END
 
+from audio_pipeline import RECORD_SAMPLES, WINDOW
+
 ROOT=Path(__file__).resolve().parents[1]
 
 
 def enqueue(pcm,session,folder,captured=None):
-    if len(pcm)!=SAMPLE_RATE*10*2:raise ValueError('PCM incompleto')
+    if len(pcm) not in (WINDOW*2,RECORD_SAMPLES*2):raise ValueError('PCM incompleto')
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
     rid=str(uuid.uuid4());wav=folder/(rid+'.wav');temp=folder/(rid+'.tmp')
     with wave.open(str(temp),'wb') as w:
@@ -68,7 +70,7 @@ def capture(port,hive_session,folder,stop):
                 stop.wait(2);print(f"Coletando {hive_session['hive_id']} em {port}",flush=True)
                 while not stop.is_set():
                     count=wait_header(link);captured=datetime.now(timezone.utc).isoformat()
-                    if count!=SAMPLE_RATE*10:continue
+                    if count not in (WINDOW,RECORD_SAMPLES):continue
                     pcm=read_exact(link,count*2)
                     if read_exact(link,len(END))!=END:
                         print('Frame incompleto descartado.',flush=True);continue

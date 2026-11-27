@@ -274,6 +274,7 @@ function stopMic(){
   state.stream=null;
   $("microphone").textContent="● Iniciar microfone";
 }
+const RECORD_SECONDS=30;
 function recordBlock(stream){
   return new Promise((resolve,reject)=>{
     const chunks=[],recorder=new MediaRecorder(stream);
@@ -282,7 +283,7 @@ function recordBlock(stream){
     recorder.onerror=()=>reject(Error("Falha na gravação do microfone."));
     recorder.onstop=()=>resolve(new Blob(chunks,{type:recorder.mimeType}));
     recorder.start();
-    state.timer=setTimeout(()=>{if(recorder.state!=="inactive")recorder.stop();},10500);
+    state.timer=setTimeout(()=>{if(recorder.state!=="inactive")recorder.stop();},RECORD_SECONDS*1000+500);
   });
 }
 async function pcmWave(blob){
@@ -290,8 +291,8 @@ async function pcmWave(blob){
   const engine=new AudioEngine();
   let source;
   try{source=await engine.decodeAudioData(await blob.arrayBuffer());}finally{await engine.close();}
-  if(source.duration<10)throw Error("A captura precisa ter ao menos 10 segundos de áudio.");
-  const offline=new OfflineAudioContext(1,160000,16000);
+  if(source.duration<RECORD_SECONDS)throw Error("A captura precisa ter ao menos "+RECORD_SECONDS+" segundos de áudio.");
+  const offline=new OfflineAudioContext(1,RECORD_SECONDS*16000,16000);
   const node=offline.createBufferSource();node.buffer=source;node.connect(offline.destination);node.start(0);
   const rendered=await offline.startRendering(),samples=rendered.getChannelData(0);
   const result=new ArrayBuffer(44+samples.length*2),view=new DataView(result);
@@ -304,7 +305,7 @@ async function pcmWave(blob){
 async function micLoop(context){
   while(state.mic){
     const captured=new Date().toISOString();
-    $("capture-status").textContent="Ouvindo "+context.hive+"… Um bloco de 10 segundos será enviado automaticamente.";
+    $("capture-status").textContent="Ouvindo "+context.hive+"… Um bloco de "+RECORD_SECONDS+" segundos será enviado automaticamente.";
     const blob=await recordBlock(context.stream);
     if(!state.mic)break;
     const wav=await pcmWave(blob);

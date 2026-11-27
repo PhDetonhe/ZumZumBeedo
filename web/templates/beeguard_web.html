@@ -10,7 +10,7 @@
 </head>
 <body>
 <aside class="sidebar">
-<a class="brand" href="/" aria-label="BioBee início"><svg viewBox="0 0 40 44" width="36" height="40" aria-hidden="true"><path d="M20 2 37 12v20L20 42 3 32V12Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 14h16L12 30h16" fill="none" stroke="currentColor" stroke-width="2.7"/></svg><span>BioBee<small>OUVIR PARA CUIDAR</small></span></a>
+<a class="brand" href="/" aria-label="BioBee início"><svg viewBox="0 0 40 44" width="36" height="40" aria-hidden="true"><path d="M20 2 37 12v20L20 42 3 32V12Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M14 30V14h7a4 4 0 0 1 0 8h-7m7 0h2a4 4 0 0 1 0 8h-9" fill="none" stroke="currentColor" stroke-width="2.7"/></svg><span>BioBee<small>OUVIR PARA CUIDAR</small></span></a>
 <p class="nav-label">ESPAÇO DE MONITORAMENTO</p>
 <nav aria-label="Navegação principal">
 <a href="#overview" class="nav-item active">◉ <span>Visão geral</span></a>
@@ -27,7 +27,7 @@
 <section class="stats" aria-label="Resumo do apiário">
 <div><span>Colmeias cadastradas</span><strong id="stat-hives">0</strong><small>no seu apiário</small></div>
 <div><span>Ciclos em andamento</span><strong id="stat-cycles">0</strong><small>referências independentes</small></div>
-<div><span>Áudios coletados</span><strong id="stat-recordings">0</strong><small>blocos de 10 segundos</small></div>
+<div><span>Áudios coletados</span><strong id="stat-recordings">0</strong><small>blocos de 30 segundos</small></div>
 <div><span>Alertas pendentes</span><strong id="stat-alerts">0</strong><small>aguardando sua revisão</small></div>
 </section>
 <section class="workspace" id="collection">
@@ -38,7 +38,7 @@
 <div class="metrics"><div class="panel"><span>Alteração da referência</span><strong id="change-score">—</strong><small id="previous-score">Aguardando comparação</small></div><div class="panel"><span>Frequência dominante</span><strong id="frequency">—</strong><small id="rms">Aguardando áudio</small></div><div class="panel"><span>Última coleta</span><strong class="time-value" id="last-time">—</strong><small id="sample-status">Sem dados neste ciclo</small></div></div>
 <div class="panel chart-panel"><div class="section-title"><div><h3>O que mudou no som?</h3><p class="muted">Índice acústico de 0 a 100% · não é um percentual de saúde.</p></div><span class="legend"><i class="amber-dot"></i> Alteração</span></div><svg id="change-chart" viewBox="0 0 800 220" role="img" aria-label="Gráfico de alteração acústica ao longo das coletas"></svg><div class="chart-caption"><span id="chart-start">Início do ciclo</span><span id="chart-end">Agora</span></div></div>
 <div class="panel"><div class="section-title"><div><h3>Assinatura acústica</h3><p class="muted">Energia relativa em 32 faixas de frequência.</p></div><div class="legend"><span class="green-dot"></span> Referência <span class="amber-dot"></span> Atual</div></div><svg id="spectrum-chart" viewBox="0 0 800 145" role="img" aria-label="Comparação do espectro atual com a referência do ciclo"></svg></div>
-<div class="panel capture-panel"><div><h3>Enviar uma coleta</h3><p class="muted">Use o ESP32, um WAV PCM16 mono de 16 kHz e 10 s, ou o microfone deste dispositivo.</p></div><div class="actions"><label class="button" id="upload-label">↑ Enviar WAV<input id="audio-file" type="file" accept=".wav,audio/wav" hidden disabled></label><button class="button primary" id="microphone" disabled>● Iniciar microfone</button></div><p id="capture-status" class="muted" role="status"></p><div id="pending-audio" hidden><button class="button small" id="retry-audio">Tentar reenviar</button> <button class="text-button" id="discard-audio">Descartar pendência</button> <a id="save-audio" download="beeguard-pendente.wav">Salvar WAV pendente</a></div></div>
+<div class="panel capture-panel"><div><h3>Enviar uma coleta</h3><p class="muted">Use o ESP32, um WAV PCM16 mono de 16 kHz e 30 s, ou o microfone deste dispositivo.</p></div><div class="actions"><label class="button" id="upload-label">↑ Enviar WAV<input id="audio-file" type="file" accept=".wav,audio/wav" hidden disabled></label><button class="button primary" id="microphone" disabled>● Iniciar microfone</button></div><p id="capture-status" class="muted" role="status"></p><div id="pending-audio" hidden><button class="button small" id="retry-audio">Tentar reenviar</button> <button class="text-button" id="discard-audio">Descartar pendência</button> <a id="save-audio" download="beeguard-pendente.wav">Salvar WAV pendente</a></div></div>
 </div>
 </section>
 <section class="panel history-section"><div class="section-title"><div><span class="eyebrow">DADOS QUE CONTAM UMA HISTÓRIA</span><h2>Histórico de coletas</h2><p class="muted" id="recording-summary">Selecione um ciclo para consultar os áudios.</p></div><a class="button" id="export" href="/api/export">↓ Exportar CSV</a></div><div class="table-scroll"><table><thead><tr><th>Captura</th><th>RMS</th><th>Frequência</th><th>Alteração</th><th>Situação acústica</th><th>Origem</th><th>Áudio</th></tr></thead><tbody id="recording-rows"></tbody></table></div><div class="pagination"><button class="button small" id="prev-page" disabled>← Anteriores</button><span id="page-info">Página 1</span><button class="button small" id="next-page" disabled>Próximas →</button></div></section>

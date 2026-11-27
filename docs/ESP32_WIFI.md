@@ -10,9 +10,9 @@ Endereço de referência: **https://zum-zum-beedo.vercel.app**. Em 12/11/2026, a
 INMP441 → I2S → ESP32 → Wi-Fi com internet → HTTPS → Flask na Vercel → PostgreSQL no Neon
 ```
 
-HTTPS é HTTP com criptografia e validação do servidor. A placa envia um `POST` com um WAV binário de 10 segundos; a aplicação valida, calcula as características, compara com a referência do ciclo e salva tudo em uma transação no PostgreSQL. A ESP32 **não se conecta diretamente ao Neon** e não recebe a senha do banco.
+HTTPS é HTTP com criptografia e validação do servidor. A placa envia um `POST` com um WAV binário de 30 segundos; a aplicação valida, calcula as características, compara com a referência do ciclo e salva tudo em uma transação no PostgreSQL. A ESP32 **não se conecta diretamente ao Neon** e não recebe a senha do banco.
 
-Cada WAV tem **320.044 bytes** (PCM16, mono, 16.000 Hz). Fica abaixo do limite de 1 MiB da aplicação e do [limite de 4,5 MB das Vercel Functions](https://vercel.com/docs/functions/limitations).
+Cada WAV tem **960.044 bytes** (PCM16, mono, 16.000 Hz). Fica abaixo do limite de 1 MiB da aplicação e do [limite de 4,5 MB das Vercel Functions](https://vercel.com/docs/functions/limitations).
 
 ## 2. Onde ficam os áudios, as análises e os espectrogramas
 
@@ -26,11 +26,11 @@ Cada WAV tem **320.044 bytes** (PCM16, mono, 16.000 Hz). Fica abaixo do limite d
 | Alertas e inspeções humanas | `bg_alerts` e `bg_inspections` |
 | Espectrograma de tempo × frequência | Gerado sob demanda a partir do WAV persistido, em `/api/recordings/UUID/spectrogram` |
 
-O gráfico “Assinatura acústica” do painel é um resumo de frequências. O novo link **Espectrograma**, no histórico, mostra a evolução das frequências ao longo dos 10 segundos. Sua imagem SVG contém um mapa de cores PNG e pode ser salva pelo navegador. Não há uma cópia de imagem no Neon: o WAV é a fonte persistente usada para recriá-la, inclusive após reiniciar ou republicar a aplicação.
+O gráfico “Assinatura acústica” do painel é um resumo de frequências. O novo link **Espectrograma**, no histórico, mostra a evolução das frequências ao longo dos 30 segundos. Sua imagem SVG contém um mapa de cores PNG e pode ser salva pelo navegador. Não há uma cópia de imagem no Neon: o WAV é a fonte persistente usada para recriá-la, inclusive após reiniciar ou republicar a aplicação.
 
 Ouvir/baixar o WAV: `/api/recordings/UUID/audio`. Localmente, os mesmos dados ficam no SQLite; na Vercel, a aplicação exige `DATABASE_URL` e não usa arquivos locais como armazenamento permanente.
 
-**Capacidade:** cada 1.000 gravações ocupa aproximadamente 320 MB só em WAV, além de índices, metadados e sobrecarga do PostgreSQL. Uma gravação a cada minuto equivale a aproximadamente 461 MB/dia por colmeia; coleta quase contínua pode se aproximar de 2,5 GB/dia. A pausa padrão ocorre depois de gravar e transmitir, portanto a quantidade real depende também da rede. Monitore o armazenamento no Neon e mantenha backup; esta alteração não exclui áudios antigos automaticamente. Para operação prolongada em muitas colmeias, uma evolução indicada é mover os arquivos para armazenamento de objetos, mantendo seus endereços no PostgreSQL.
+**Capacidade:** cada 1.000 gravações ocupa aproximadamente 960 MB só em WAV, além de índices, metadados e sobrecarga do PostgreSQL. Uma gravação a cada minuto equivale a aproximadamente 1,38 GB/dia por colmeia; coleta quase contínua pode se aproximar de 2,76 GB/dia. A pausa padrão ocorre depois de gravar e transmitir, portanto a quantidade real depende também da rede. Monitore o armazenamento no Neon e mantenha backup; esta alteração não exclui áudios antigos automaticamente. Para operação prolongada em muitas colmeias, uma evolução indicada é mover os arquivos para armazenamento de objetos, mantendo seus endereços no PostgreSQL.
 
 ## 3. Preparar a Vercel
 
@@ -94,7 +94,7 @@ Existem pausas durante o envio: esta versão não grava um fluxo ininterrupto de
 
 ### Falha de internet ou de energia
 
-- Há **uma pendência completa** de cerca de 320 KB em LittleFS. Sem confirmação, a placa tenta reenviar o mesmo WAV, UUID, horário e ciclo com espera progressiva de 2 a 60 segundos. O banco trata a repetição como `already_stored`, sem duplicar.
+- Há **uma pendência completa** de cerca de 960 KB em LittleFS. Sem confirmação, a placa tenta reenviar o mesmo WAV, UUID, horário e ciclo com espera progressiva de 2 a 60 segundos. O banco trata a repetição como `already_stored`, sem duplicar.
 - Enquanto houver pendência, novas gravações ficam suspensas. Esta versão não mantém uma fila de horas ou dias offline. Sem rede, também não inicia novas capturas, pois precisa confirmar o ciclo ativo.
 - Ao religar, uma pendência publicada e íntegra é reenviada antes de consultar um novo ciclo, inclusive se seu ciclo original já terminou. O horário da captura continua sendo o original.
 - Queda de energia durante a captura pode perder o bloco incompleto. Uma queda no intervalo entre publicar os arquivos de pendência, ou durante a limpeza, pode deixar arquivos inconsistentes. Nesse caso a placa suspende a captura e pede revisão via USB, preservando os arquivos em vez de sobrescrevê-los. O firmware não fornece uma interface de recuperação automática desses casos.

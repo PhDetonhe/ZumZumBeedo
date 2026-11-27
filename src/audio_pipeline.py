@@ -10,6 +10,8 @@ from scipy.signal import resample_poly, stft
 
 RATE = 16000
 WINDOW = RATE * 10
+RECORD_SECONDS = 30
+RECORD_SAMPLES = RATE * RECORD_SECONDS
 VERSION = 'beeguard-features-1'
 
 def load_audio(path):
@@ -52,9 +54,9 @@ def quality(audio):
             'quality_reasons': ';'.join(reasons)}
 
 
-def features(audio):
-    if len(audio) != WINDOW:
-        raise ValueError('Esperada janela de 10 s a 16000 Hz')
+def features(audio, *, window=WINDOW):
+    if len(audio) != window:
+        raise ValueError(f'Esperada janela de {window / RATE:g} s a {RATE} Hz')
     _, _, z = stft(audio, RATE, nperseg=512, noverlap=256,
                    boundary=None, padded=False)
     power = np.abs(z) ** 2

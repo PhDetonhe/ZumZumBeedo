@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 from flask import Flask, jsonify, request
-from audio_pipeline import features, quality, RATE, WINDOW, VERSION
+from audio_pipeline import features, quality, RATE, RECORD_SAMPLES, WINDOW, VERSION
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -138,10 +138,11 @@ def same_record(existing,row):
 def decode_audio(payload):
     try:
         with wave.open(io.BytesIO(payload),'rb') as wav:
-            if (wav.getnchannels(),wav.getsampwidth(),wav.getframerate(),wav.getnframes())!=(1,2,RATE,WINDOW):
-                raise ValueError('Esperado WAV PCM16 mono, 16000 Hz, exatamente 10 segundos')
-            pcm=wav.readframes(WINDOW)
-            if len(pcm)!=WINDOW*2:raise ValueError('WAV incompleto')
+            frames=wav.getnframes()
+            if (wav.getnchannels(),wav.getsampwidth(),wav.getframerate())!=(1,2,RATE) or frames not in (WINDOW,RECORD_SAMPLES):
+                raise ValueError('Esperado WAV PCM16 mono, 16000 Hz, com 30 ou 10 segundos')
+            pcm=wav.readframes(frames)
+            if len(pcm)!=frames*2:raise ValueError('WAV incompleto')
     except (wave.Error,EOFError) as exc:raise ValueError('WAV inválido') from exc
     return np.frombuffer(pcm,dtype='<i2').astype(np.float64)/32768
 
@@ -171,8 +172,8 @@ def create_app(store, audio_dir):
             audio=decode_audio(payload)
             digest=hashlib.sha256(payload).hexdigest()
             row={'id':clip_id,'hive_id':hive,'captured_at':captured,'audio_sha256':digest,
-                'audio_path':f'{clip_id}_{digest[:16]}.wav','sample_rate':RATE,'duration_seconds':10.0,
-                'quality':quality(audio),'features':features(audio),'model_status':'not_enabled'}
+                'audio_path':f'{clip_id}_{digest[:16]}.wav','sample_rate':RATE,'duration_seconds':len(audio)/RATE,
+                'quality':quality(audio),'features':features(audio, window=len(audio)),'model_status':'not_enabled'}
             row['quality_status']=row['quality']['quality_status']
             row['features']['feature_version']=VERSION
         except (ValueError,TypeError) as exc:return jsonify(error=str(exc)),400
@@ -209,7 +210,7 @@ def create_app(store, audio_dir):
         return '''<!doctype html><html lang="pt-br"><meta charset="utf-8"><title>BeeGuard</title>
 <style>body{background:#101923;color:#e9f1f8;font:16px system-ui;max-width:1100px;margin:40px auto;padding:20px}h1{color:#f4c65b}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:12px;border-bottom:1px solid #304050}.note{color:#adc0d0}</style>
 <h1>BeeGuard · Monitoramento acústico</h1><p id="status">Verificando servidor…</p>
-<p class="note">Gravações de 10 s · características acústicas · modelo de população desativado</p>
+<p class="note">Gravações de 30 s · características acústicas · modelo de população desativado</p>
 <table><thead><tr><th>Colmeia</th><th>Captura UTC</th><th>RMS</th><th>Frequência dominante</th><th>Qualidade técnica</th></tr></thead><tbody id="rows"></tbody></table>
 <script>async function update(){try{let response=await fetch('/api/recordings');if(!response.ok)throw Error('MySQL indisponível');let data=await response.json();document.querySelector('#status').textContent='Servidor conectado · '+data.recordings.length+' registros recentes';let body=document.querySelector('#rows');body.replaceChildren();for(let r of data.recordings){let tr=document.createElement('tr');for(let value of [r.hive_id,r.captured_at,Number(r.features.rms).toFixed(5),Number(r.features.dominant_frequency_hz).toFixed(1)+' Hz',r.quality_status]){let td=document.createElement('td');td.textContent=value;tr.appendChild(td)}body.appendChild(tr)}}catch(e){document.querySelector('#status').textContent=e.message}}update();setInterval(update,3000)</script></html>'''
     return app

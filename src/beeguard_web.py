@@ -21,7 +21,7 @@ import numpy as np
 from flask import Flask, Response, jsonify, request, send_file
 from scipy.signal import stft
 from werkzeug.exceptions import HTTPException
-from audio_pipeline import RATE, WINDOW, features, quality
+from audio_pipeline import RATE, RECORD_SECONDS, RECORD_SAMPLES, WINDOW, features, quality
 
 ROOT = Path(__file__).resolve().parents[1]
 IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{1,64}")
@@ -226,7 +226,8 @@ def sample_json(row):
 def spectrogram_svg(payload):
     """Render from the durable WAV; no files or plotting runtime on Vercel."""
     with wave.open(io.BytesIO(payload), "rb") as wav:
-        audio = np.frombuffer(wav.readframes(WINDOW), dtype="<i2").astype(float) / 32768
+        frames = wav.getnframes()
+        audio = np.frombuffer(wav.readframes(frames), dtype="<i2").astype(float) / 32768
     _, _, spectrum = stft(audio, RATE, nperseg=512, noverlap=256, boundary=None, padded=False)
     db = 20 * np.log10(np.maximum(np.abs(spectrum), 1e-9))
     # Preserve the loudest bin in each time group, then show 0–8 kHz.
@@ -241,28 +242,30 @@ def spectrogram_svg(payload):
     png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
            + chunk(b"IDAT", zlib.compress(scanlines)) + chunk(b"IEND", b""))
     encoded = base64.b64encode(png).decode("ascii")
+    seconds = frames / RATE
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 420" role="img" aria-labelledby="title desc">
-<title id="title">Espectrograma da gravação</title><desc id="desc">Tempo de 0 a 10 segundos, frequência de 0 a 8000 Hz. Cores claras indicam maior amplitude.</desc>
+<title id="title">Espectrograma da gravação</title><desc id="desc">Tempo de 0 a {seconds:g} segundos, frequência de 0 a 8000 Hz. Cores claras indicam maior amplitude.</desc>
 <rect width="900" height="420" fill="#fff"/><g font-family="sans-serif" fill="#193b30">
 <text x="65" y="30" font-size="20">BioBee · Espectrograma</text>
 <image x="65" y="50" width="800" height="290" preserveAspectRatio="none" href="data:image/png;base64,{encoded}"/>
 <g font-size="13"><text x="10" y="60">8 kHz</text><text x="10" y="200">4 kHz</text><text x="20" y="340">0 Hz</text>
-<text x="65" y="363">0 s</text><text x="455" y="363">5 s</text><text x="835" y="363">10 s</text>
+<text x="65" y="363">0 s</text><text x="455" y="363">{seconds / 2:g} s</text><text x="835" y="363">{seconds:g} s</text>
 <text x="65" y="395">Amplitude STFT: escuro ≤ −90 dBFS · claro ≥ 0 dBFS</text></g></g></svg>'''
 
 
 def describe(payload):
     try:
         with wave.open(io.BytesIO(payload), "rb") as wav:
-            if (wav.getnchannels(), wav.getsampwidth(), wav.getframerate(), wav.getnframes()) != (1, 2, RATE, WINDOW):
-                raise ValueError("Use WAV PCM16 mono, 16000 Hz, exatamente 10 segundos.")
-            pcm = wav.readframes(WINDOW)
-            if len(pcm) != WINDOW * 2:
+            frames = wav.getnframes()
+            if (wav.getnchannels(), wav.getsampwidth(), wav.getframerate()) != (1, 2, RATE) or frames not in (WINDOW, RECORD_SAMPLES):
+                raise ValueError(f"Use WAV PCM16 mono, {RATE} Hz, com {RECORD_SECONDS} segundos (ou 10 para gravações antigas).")
+            pcm = wav.readframes(frames)
+            if len(pcm) != frames * 2:
                 raise ValueError("O WAV está incompleto.")
     except (wave.Error, EOFError) as exc:
         raise ValueError("Arquivo WAV inválido.") from exc
     audio = np.frombuffer(pcm, dtype="<i2").astype(np.float64) / 32768
-    desc = features(audio)
+    desc = features(audio, window=frames)
     freq, _, spectrum = stft(audio, RATE, nperseg=1024, noverlap=512, boundary=None, padded=False)
     power = (np.abs(spectrum) ** 2).mean(axis=1)
     edges = np.geomspace(40, 8001, 33)
@@ -607,7 +610,7 @@ def create_app(store=None):
                 WHERE c.hive_id=? AND c.ended_at IS NULL
                 AND NOT EXISTS (SELECT 1 FROM bg_hive_archives a WHERE a.hive_id=c.hive_id)""", (hive_id,))
         return jsonify(hive_id=hive_id, cycle_id=cycle["id"] if cycle else None,
-                       recording_enabled=bool(cycle), sample_rate=RATE, recording_seconds=10,
+                       recording_enabled=bool(cycle), sample_rate=RATE, recording_seconds=RECORD_SECONDS,
                        server_time=now_iso())
 
     @app.post("/api/device/audio")

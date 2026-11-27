@@ -12,7 +12,8 @@
 #include "trusted_root_ca.h"
 
 static const uint32_t RATE = 16000;
-static const uint32_t SAMPLE_COUNT = RATE * 10;
+static const uint32_t RECORD_SECONDS = 30;
+static const uint32_t SAMPLE_COUNT = RATE * RECORD_SECONDS;
 static const uint32_t WAV_SIZE = 44 + SAMPLE_COUNT * 2;
 static const char WAV_PATH[] = "/pending.wav";
 static const char META_PATH[] = "/pending.json";
@@ -82,7 +83,7 @@ bool activeCycle(String &cycle) {
   http.end();
   if (!parsed || response["hive_id"].as<String>() != HIVE_ID
       || response["sample_rate"].as<uint32_t>() != RATE
-      || response["recording_seconds"].as<uint32_t>() != 10) {
+      || response["recording_seconds"].as<uint32_t>() != RECORD_SECONDS) {
     Serial.printf("Configuração não confirmada (HTTP %d); aguardando.\n", code);
     return false;
   }
@@ -158,7 +159,7 @@ bool recordAudio(const String &cycle) {
   gmtime_r(&captured, &utc);
   char capturedAt[25];
   strftime(capturedAt, sizeof(capturedAt), "%Y-%m-%dT%H:%M:%SZ", &utc);
-  Serial.println("Gravando 10 segundos...");
+  Serial.printf("Gravando %lu segundos...\n", (unsigned long)RECORD_SECONDS);
   uint32_t remaining = SAMPLE_COUNT;
   while (ok && remaining) {
     size_t count = min(remaining, (uint32_t)512);
@@ -198,7 +199,9 @@ bool uploadPending() {
   bool valid = marker && !deserializeJson(meta, marker);
   marker.close();
   File file = LittleFS.open(WAV_PATH, FILE_READ);
-  if (!valid || !file || file.size() != WAV_SIZE || meta["hive_id"].as<String>() != HIVE_ID) {
+  const size_t pendingSize = file ? file.size() : 0;
+  const uint32_t legacyWavSize = 44 + RATE * 10 * 2;
+  if (!valid || (pendingSize != WAV_SIZE && pendingSize != legacyWavSize) || meta["hive_id"].as<String>() != HIVE_ID) {
     Serial.println("Pendência inconsistente; preservada para revisão via USB.");
     file.close(); return false;
   }

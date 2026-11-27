@@ -30,7 +30,7 @@ Abra http://127.0.0.1:5000. O painel e `/monitor` usam a aplicação nova; `/hea
 5. Registre inspeções como saudável, doente ou condição não confirmada e exporte o CSV para construir uma base rotulada.
 6. Encerre o ciclo para preservar o histórico e iniciar outra referência.
 
-O formato recebido é WAV PCM16 mono, 16 kHz, exatamente 10 segundos. O microfone exige localhost ou HTTPS. As notificações do navegador dependem de permissão e do painel aberto; os alertas ficam armazenados no banco.
+O formato recebido é WAV PCM16 mono, 16 kHz, 30 segundos. O microfone exige localhost ou HTTPS. As notificações do navegador dependem de permissão e do painel aberto; os alertas ficam armazenados no banco.
 
 Para o ESP32 conectado por USB, instale o [firmware](firmware/BeeGuardAI/BeeGuardAI.ino), feche o Monitor Serial e execute o comando do painel na pasta do projeto. Troque COM6 pela porta real. Para reenviar pendências:
 

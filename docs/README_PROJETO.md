@@ -69,7 +69,7 @@ flowchart TD
     G --> H[Exportar e avaliar elegibilidade para treino]
 ```
 
-O áudio esperado é PCM16 mono a 16 kHz, em blocos de 10 segundos. Uma inspeção não rotula automaticamente todas as gravações próximas. A posição do microfone, ganho, ruído externo e horário afetam a comparação. Não há modelo validado de diagnóstico de saúde de jataí.
+O áudio esperado é PCM16 mono a 16 kHz, em blocos de 30 segundos. Uma inspeção não rotula automaticamente todas as gravações próximas. A posição do microfone, ganho, ruído externo e horário afetam a comparação. Não há modelo validado de diagnóstico de saúde de jataí.
 
 Veja [inicialização](../README.md), [IA](README_IA.md) e [manual completo](referencia/README.md).
 

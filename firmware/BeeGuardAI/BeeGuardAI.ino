@@ -8,7 +8,7 @@
 
 #define SAMPLE_RATE 16000
 #define SAMPLES 1024
-#define RECORD_SECONDS 10
+#define RECORD_SECONDS 30
 
 // Protocolo: "BGAR" + versão (1) + uint32 LE samples + PCM16 LE + "BEND".
 const uint8_t FRAME_MAGIC[5] = {'B','G','A','R',1};

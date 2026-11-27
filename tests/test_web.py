@@ -19,13 +19,14 @@ from unittest.mock import patch
 
 import numpy as np
 from werkzeug.serving import make_server
+from audio_pipeline import RECORD_SAMPLES
 from beeguard_web import Store, create_app
 from capture_field import enqueue, upload
 
 
 @lru_cache(maxsize=12)
 def tone(amplitude=.1, frequency=250):
-    pcm = np.round(amplitude * 32767 * np.sin(2 * np.pi * frequency * np.arange(160000) / 16000)).astype("<i2")
+    pcm = np.round(amplitude * 32767 * np.sin(2 * np.pi * frequency * np.arange(RECORD_SAMPLES) / 16000)).astype("<i2")
     output = io.BytesIO()
     with wave.open(output, "wb") as wav:
         wav.setnchannels(1)
@@ -303,7 +304,7 @@ class WebFlow(unittest.TestCase):
         worker.start()
         try:
             with wave.open(io.BytesIO(tone()), "rb") as wav:
-                marker = enqueue(wav.readframes(160000), {"id": self.cid, "hive_id": "BG01"},
+                marker = enqueue(wav.readframes(RECORD_SAMPLES), {"id": self.cid, "hive_id": "BG01"},
                                  self.root / "pending", (self.time + timedelta(seconds=10)).isoformat())
             upload(marker, "http://127.0.0.1:" + str(server.server_port))
             self.assertFalse(marker.exists())
@@ -325,6 +326,7 @@ class WebFlow(unittest.TestCase):
         self.assertTrue(response.json["recording_enabled"])
         self.assertEqual(response.json["cycle_id"], self.cid)
         self.assertEqual(response.json["sample_rate"], 16000)
+        self.assertEqual(response.json["recording_seconds"], 30)
         self.client.post("/api/cycles/" + self.cid + "/end")
         response = self.client.get("/api/device/config", headers=headers)
         self.assertFalse(response.json["recording_enabled"])
@@ -389,6 +391,7 @@ class WebFlow(unittest.TestCase):
         response = fresh.get(row["spectrogram_url"])
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.mimetype, "image/svg+xml")
+        self.assertIn(b">30 s</text>", response.data)
         png = base64.b64decode(re.search(rb"base64,([^\"]+)", response.data).group(1))
         self.assertEqual(png[:8], b"\x89PNG\r\n\x1a\n")
         width, height = struct.unpack(">II", png[16:24])

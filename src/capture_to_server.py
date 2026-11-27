@@ -15,11 +15,13 @@ from pathlib import Path
 import serial
 from acquisition.capture_audio import read_exact, wait_header, BAUD_RATE, SAMPLE_RATE, END, SERIAL_PORT
 
+from audio_pipeline import RECORD_SAMPLES, WINDOW
+
 ROOT=Path(__file__).resolve().parents[1]
 
 
 def enqueue_pcm(pcm, hive, folder, captured_at=None):
-    if len(pcm)!=SAMPLE_RATE*10*2:raise ValueError('Esperado PCM de 10 s')
+    if len(pcm) not in (WINDOW*2,RECORD_SAMPLES*2):raise ValueError('Esperado PCM de 30 ou 10 s')
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
     clip_id=str(uuid.uuid4())
     final=folder/(clip_id+'.wav');temp=folder/(clip_id+'.tmp')
@@ -80,7 +82,7 @@ def capture(port_name, hive, folder, stop):
                 while not stop.is_set():
                     count=wait_header(port)
                     captured=datetime.now(timezone.utc).isoformat()
-                    if count!=SAMPLE_RATE*10:
+                    if count not in (WINDOW,RECORD_SAMPLES):
                         print(f'Cabeçalho inesperado: {count}; procurando próximo frame.',flush=True)
                         continue
                     pcm=read_exact(port,count*2)
@@ -98,15 +100,15 @@ if __name__=='__main__':
     parser.add_argument('--port',default=SERIAL_PORT)
     parser.add_argument('--hive',default='BG01')
     parser.add_argument('--server',default='http://127.0.0.1:5000')
-    parser.add_argument('--send-file',help='Testa envio de um WAV PCM16 mono 16 kHz de 10 s, sem ESP32')
+    parser.add_argument('--send-file',help='Testa envio de um WAV PCM16 mono 16 kHz de 30 s, sem ESP32')
     parser.add_argument('--flush',action='store_true',help='Tenta enviar a fila atual e termina')
     a=parser.parse_args()
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',a.hive):parser.error('Identificador de colmeia inválido')
     folder=ROOT/'data/live/pending';folder.mkdir(parents=True,exist_ok=True)
     if a.send_file:
         with wave.open(a.send_file,'rb') as wav:
-            if (wav.getnchannels(),wav.getsampwidth(),wav.getframerate(),wav.getnframes())!=(1,2,SAMPLE_RATE,SAMPLE_RATE*10):
-                parser.error('Esperado WAV PCM16 mono, 16000 Hz, 10 s')
+            if (wav.getnchannels(),wav.getsampwidth(),wav.getframerate())!=(1,2,SAMPLE_RATE) or wav.getnframes() not in (WINDOW,RECORD_SAMPLES):
+                parser.error('Esperado WAV PCM16 mono, 16000 Hz, 30 ou 10 s')
             marker=enqueue_pcm(wav.readframes(wav.getnframes()),a.hive,folder)
         try:upload_one(marker,a.server)
         except Exception as exc:raise SystemExit(f'Envio pendente: {exc}; áudio preservado na fila.')
