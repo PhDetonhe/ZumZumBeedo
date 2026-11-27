@@ -2,7 +2,7 @@
 // Modelo dos valores de exemplo incluidos em config.h.
 static const char WIFI_SSID[] = "ESP32-Ecoflutuador";
 static const char WIFI_PASSWORD[] = "12345678";
-static const char SERVER_URL[] = "https://zum-zum-beedo.vercel.app"; // No trailing slash.
+static const char SERVER_URL[] = "https://bio-bee.vercel.app"; // No trailing slash.
 static const char HIVE_ID[] = "BG01"; // Exactly the code registered in the dashboard.
 
 static const int MIC_WS = 25;

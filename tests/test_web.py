@@ -121,15 +121,41 @@ class WebFlow(unittest.TestCase):
         self.assertEqual(restored.status_code, 200)
         self.assertEqual(self.client.get("/api/recordings?cycle_id=" + self.cid).json["total"], 1)
 
-    def test_permanent_hive_delete_requires_exact_confirmation_and_no_history(self):
-        self.register("EMPTY", "Colmeia vazia")
-        self.assertEqual(self.client.post("/api/hives/EMPTY/delete", json={"confirm_id": "wrong"}).status_code, 400)
-        deleted = self.client.post("/api/hives/EMPTY/delete", json={"confirm_id": "EMPTY"})
+    def test_permanent_hive_delete_requires_confirmation_and_removes_only_its_history(self):
+        self.register("BG02", "Outra colmeia")
+        other_cycle = self.cycle("BG02")
+        self.assertEqual(self.send(hid="BG02", cid=other_cycle)[0].status_code, 201)
+        self.baseline()
+        self.send(amplitude=.5)
+        alert, headers = self.send(amplitude=.5)
+        self.assertIsNotNone(alert.json["alert_id"])
+        recording_id = headers["X-Recording-Id"]
+        inspection = self.client.post("/api/inspections", json={
+            "cycle_id": self.cid, "observer": "Equipe", "notes": "Observação",
+            "label": "healthy", "observed_at": self.time.isoformat(),
+        })
+        self.assertEqual(inspection.status_code, 201)
+        self.assertEqual(self.client.post("/api/hives/BG01/archive", json={"archived": True}).status_code, 200)
+
+        path = "/api/hives/BG01/delete"
+        with patch.dict("os.environ", {"BEEGUARD_DELETE_KEY": ""}):
+            self.assertEqual(self.client.post(path, json={"confirm_id": "BG01"}).status_code, 503)
+        with patch.dict("os.environ", {"BEEGUARD_DELETE_KEY": "admin-test-key"}):
+            self.assertEqual(self.client.post(path, json={"confirm_id": "wrong", "delete_key": "admin-test-key"}).status_code, 400)
+            self.assertEqual(self.client.post(path, json={"confirm_id": "BG01", "delete_key": "wrong"}).status_code, 403)
+            self.assertEqual(len(self.recordings()), 5)
+            deleted = self.client.post(path, json={"confirm_id": "BG01", "delete_key": "admin-test-key"})
+
         self.assertEqual(deleted.status_code, 200)
-        self.assertEqual(self.client.get("/api/hives/EMPTY/cycles").status_code, 404)
-        blocked = self.client.post("/api/hives/BG01/delete", json={"confirm_id": "BG01"})
-        self.assertEqual(blocked.status_code, 409)
-        self.assertEqual(self.client.get("/api/recordings?cycle_id=" + self.cid).json["total"], 0)
+        self.assertEqual(self.client.get("/api/hives/BG01/cycles").status_code, 404)
+        self.assertEqual(self.client.get("/api/recordings/" + recording_id + "/spectrogram").status_code, 404)
+        self.assertEqual(self.client.get("/api/recordings?cycle_id=" + other_cycle).json["total"], 1)
+        with self.store.transaction() as con:
+            for table in ("bg_hive_archives", "bg_cycles", "bg_samples", "bg_alerts", "bg_inspections"):
+                row = self.store.one(con, f"SELECT COUNT(*) AS n FROM {table} WHERE hive_id=?", ("BG01",))
+                self.assertEqual(row["n"], 0, table)
+            row = self.store.one(con, "SELECT COUNT(*) AS n FROM bg_sample_sources")
+            self.assertEqual(row["n"], 1)
 
     def test_one_active_cycle_and_cycle_isolation(self):
         self.assertEqual(self.client.post("/api/hives/BG01/cycles", json={"name": "Outro"}).status_code, 409)

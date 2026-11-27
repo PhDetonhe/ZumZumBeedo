@@ -2,6 +2,7 @@
 import base64
 import csv
 import hashlib
+import hmac
 import io
 import json
 import math
@@ -523,21 +524,26 @@ def create_app(store=None):
         return jsonify(id=hive_id, name=name, location=location, species=species, notes=notes)
 
     @app.post("/api/hives/<hive_id>/delete")
-    def delete_empty_hive(hive_id):
+    def delete_hive(hive_id):
         data = body()
         if data.get("confirm_id") != hive_id:
             raise ValueError("Digite o identificador exato da colmeia para confirmar a exclusão.")
+        delete_key = os.environ.get("BEEGUARD_DELETE_KEY")
+        if not delete_key:
+            raise DomainError("Exclusão indisponível. Configure a chave administrativa no servidor.", 503)
+        supplied_key = data.get("delete_key")
+        if not isinstance(supplied_key, str) or not hmac.compare_digest(
+            supplied_key.encode("utf-8", errors="surrogatepass"), delete_key.encode("utf-8")
+        ):
+            raise DomainError("Chave administrativa inválida.", 403)
         with store.transaction(write=True) as con:
             store.hive(con, hive_id, lock=True)
-            dependencies = {
-                "cycles": store.one(con, "SELECT COUNT(*) AS n FROM bg_cycles WHERE hive_id=?", (hive_id,))["n"],
-                "recordings": store.one(con, "SELECT COUNT(*) AS n FROM bg_samples WHERE hive_id=?", (hive_id,))["n"],
-                "alerts": store.one(con, "SELECT COUNT(*) AS n FROM bg_alerts WHERE hive_id=?", (hive_id,))["n"],
-                "inspections": store.one(con, "SELECT COUNT(*) AS n FROM bg_inspections WHERE hive_id=?", (hive_id,))["n"],
-            }
-            if any(dependencies.values()):
-                details = ", ".join(f"{name}: {count}" for name, count in dependencies.items() if count)
-                raise DomainError("Exclusão bloqueada para preservar o histórico associado (" + details + "). Arquive a colmeia.")
+            store.sql(con, "DELETE FROM bg_alerts WHERE hive_id=?", (hive_id,))
+            store.sql(con, "DELETE FROM bg_inspections WHERE hive_id=?", (hive_id,))
+            store.sql(con, """DELETE FROM bg_sample_sources
+                WHERE recording_id IN (SELECT id FROM bg_samples WHERE hive_id=?)""", (hive_id,))
+            store.sql(con, "DELETE FROM bg_samples WHERE hive_id=?", (hive_id,))
+            store.sql(con, "DELETE FROM bg_cycles WHERE hive_id=?", (hive_id,))
             store.sql(con, "DELETE FROM bg_hive_archives WHERE hive_id=?", (hive_id,))
             store.sql(con, "DELETE FROM bg_hives WHERE id=?", (hive_id,))
         return jsonify(id=hive_id, deleted=True)

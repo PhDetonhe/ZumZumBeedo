@@ -73,7 +73,7 @@ function renderDetail(){
   $("edit-hive").disabled=!hive;
   $("archive-hive").textContent=hive?.archived_at?"Restaurar colmeia":"Arquivar colmeia";
   $("hive-dependencies").textContent=hive?"Histórico preservado: "+hive.cycle_count+" ciclo(s), "+hive.recording_count+" gravação(oes).":"";
-  $("delete-hive").disabled=!hive || hive.cycle_count>0 || hive.recording_count>0;
+  $("delete-hive").disabled=!hive;
   $("new-cycle").disabled=!hive || !!hive.archived_at || !!activeCycle();
   $("end-cycle").disabled=!cycle || !!cycle.ended_at;
   $("cycle-select").disabled=!state.cycles.length;
@@ -154,8 +154,8 @@ async function refresh(){
     errorBanner(error.message+" O painel tentará reconectar automaticamente.");
   }
 }
-function showDialog(title,content,kind){
-  $("dialog-content").innerHTML='<div class="dialog-heading"><h2>'+esc(title)+'</h2><button type="button" data-close aria-label="Fechar">×</button></div><form data-kind="'+kind+'">'+content+'<p class="form-error" role="alert"></p><div class="form-actions"><button type="button" class="button" data-close>Cancelar</button><button class="button primary" type="submit">Salvar</button></div></form>';
+function showDialog(title,content,kind,submitLabel="Salvar"){
+  $("dialog-content").innerHTML='<div class="dialog-heading"><h2>'+esc(title)+'</h2><button type="button" data-close aria-label="Fechar">×</button></div><form data-kind="'+kind+'">'+content+'<p class="form-error" role="alert"></p><div class="form-actions"><button type="button" class="button" data-close>Cancelar</button><button class="button primary" type="submit">'+esc(submitLabel)+'</button></div></form>';
   $("dialog").showModal();
 }
 function localInput(value=new Date()){const d=new Date(value);return new Date(d-d.getTimezoneOffset()*60000).toISOString().slice(0,19);}
@@ -165,11 +165,27 @@ $("new-cycle").onclick=()=>showDialog("Iniciar ciclo",'<p class="muted">A refer�
 $("new-inspection").onclick=()=>{const c=currentCycle();showDialog("Registrar inspeção",'<p class="muted">Registre o que foi observado na colmeia. Esta informação rotula os áudios próximos no CSV e não é um diagnóstico produzido pelo sistema.</p><label>Condição observada<select name="label"><option value="uncertain">Condição não confirmada</option><option value="healthy">Saudável</option><option value="sick">Doente</option></select></label><label>Quem realizou a inspeção<input name="observer" maxlength="100" required></label><label>Data e hora da observação<input type="datetime-local" step="1" name="observed_at" value="'+localInput(c.ended_at || new Date())+'" required></label><label>O que foi observado?<textarea name="notes" maxlength="2000" required></textarea></label>',"inspection");};
 $("end-cycle").onclick=()=>showDialog("Encerrar ciclo",'<p>Os áudios e comparações serão preservados. Pare a captura antes de encerrar este ciclo.</p>',"end");
 $("dialog").addEventListener("click",e=>{if(e.target.closest("[data-close]"))$("dialog").close();});
+$("dialog").addEventListener("close",()=>{
+  const key=$("dialog-content").querySelector('[name="delete_key"]');
+  if(key)key.value="";
+});
 $("dialog").addEventListener("submit",async e=>{
   e.preventDefault();
   const form=e.target,data=Object.fromEntries(new FormData(form)),submit=form.querySelector('[type="submit"]');
   submit.disabled=true;
   try{
+    if(form.dataset.kind==="hive-delete"){
+      if(data.confirm_id!==data.hive_id)throw Error("Digite o identificador exato da colmeia.");
+      const hiveId=data.hive_id;
+      delete data.hive_id;
+      await post("/api/hives/"+encodeURIComponent(hiveId)+"/delete",data);
+      if(state.hive===hiveId){stopMic();state.hive=null;state.cycle=null;state.offset=0;}
+      document.querySelector(".hive-menu").open=false;
+      $("dialog").close();
+      toast("Colmeia e histórico excluídos.");
+      await refresh();
+      return;
+    }
     if(form.dataset.kind==="hive"){await post("/api/hives",data);state.hive=data.id;state.cycle=null;}
     if(form.dataset.kind==="hive-edit"){await patch("/api/hives/"+encodeURIComponent(state.hive),data);}
     if(form.dataset.kind==="cycle"){for(const key of ["calibration_samples","threshold","consecutive_samples"])data[key]=Number(data[key]);const result=await post("/api/hives/"+encodeURIComponent(state.hive)+"/cycles",data);state.cycle=result.cycle.id;state.offset=0;}
@@ -194,18 +210,15 @@ $("archive-hive").onclick=async()=>{
     await refresh();
   }catch(error){toast(error.message);}
 };
-$("delete-hive").onclick=async()=>{
+$("delete-hive").onclick=()=>{
   const hive=state.hives.find(h=>h.id===state.hive);
-  if(!hive || hive.cycle_count>0 || hive.recording_count>0)return;
-  const typed=window.prompt("Para excluir permanentemente a colmeia vazia, digite o identificador "+hive.id+".");
-  if(typed!==hive.id){if(typed!==null)toast("Identificador diferente; exclusao cancelada.");return;}
-  try{
-    await post("/api/hives/"+encodeURIComponent(hive.id)+"/delete",{confirm_id:typed});
-    document.querySelector(".hive-menu").open=false;
-    state.hive=null;state.cycle=null;
-    toast("Colmeia vazia excluida.");
-    await refresh();
-  }catch(error){toast(error.message);}
+  if(!hive)return;
+  showDialog("Excluir colmeia",
+    '<p>Esta ação apaga permanentemente '+esc(hive.name)+' e todo o histórico, incluindo gravações, ciclos, alertas e inspeções.</p>'+
+    '<input type="hidden" name="hive_id" value="'+esc(hive.id)+'">'+
+    '<label>Digite '+esc(hive.id)+' para confirmar<input name="confirm_id" maxlength="64" autocomplete="off" required></label>'+
+    '<label>Chave administrativa<input type="password" name="delete_key" autocomplete="off" required></label>',
+    "hive-delete","Excluir definitivamente");
 };
 $("hive-list").onclick=e=>{const card=e.target.closest("[data-hive]");if(!card)return;stopMic();state.hive=card.dataset.hive;state.cycle=null;state.offset=0;try{localStorage.setItem("beeguard-hive",state.hive);}catch{}refresh();};
 $("cycle-select").onchange=e=>{stopMic();state.cycle=e.target.value;state.offset=0;refresh();};

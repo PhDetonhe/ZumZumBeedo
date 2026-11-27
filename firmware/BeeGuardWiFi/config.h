@@ -3,7 +3,7 @@
 // Preencha o Wi-Fi nesta copia antes de gravar a placa.
 static const char WIFI_SSID[] = "ABELHAS";
 static const char WIFI_PASSWORD[] = "12345678";
-static const char SERVER_URL[] = "https://zum-zum-beedo.vercel.app"; // No trailing slash.
+static const char SERVER_URL[] = "https://bio-bee.vercel.app"; // No trailing slash.
 static const char HIVE_ID[] = "bg02"; // Exactly the code registered in the dashboard.
 
 static const int MIC_WS = 25;
