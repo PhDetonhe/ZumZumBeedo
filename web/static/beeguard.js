@@ -7,7 +7,7 @@ const statusNames = {usual:"Dentro da referência",changed:"Alteração detectad
 const labelNames = {healthy:"Saudável · condição observada",sick:"Doente · condição observada",uncertain:"Condição não confirmada"};
 const state = {hives:[],hive:null,cycle:null,cycles:[],records:[],offset:0,total:0,version:0,seen:null,mic:false,stream:null,recorder:null,timer:null,pending:null,hiveSearch:"",showArchived:false};
 try { state.hive = localStorage.getItem("beeguard-hive"); } catch {}
-let toastTimer;
+let toastTimer,refreshing=0;
 function toast(message) { $("toast").textContent=message; $("toast").hidden=false; clearTimeout(toastTimer); toastTimer=setTimeout(()=>$("toast").hidden=true,5000); }
 async function api(path, options={}) {
   const response = await fetch(path,{...options,cache:"no-store",signal:AbortSignal.timeout(20000)});
@@ -57,7 +57,9 @@ function renderHives(){
   $("stat-recordings").textContent=active.reduce((n,h)=>n+h.recording_count,0).toLocaleString("pt-BR");
   $("hive-count").textContent=String(hives.length).padStart(2,"0");
   $("toggle-archived").textContent=state.showArchived?"Ocultar arquivadas":"Ver arquivadas";
-  $("hive-list").innerHTML=visible.length ? visible.map(h=>'<button class="hive-card '+(h.id===state.hive?"selected":"")+'" data-hive="'+esc(h.id)+'" aria-pressed="'+(h.id===state.hive)+'"><div class="hive-top"><span>'+esc(h.id)+'</span><span><i class="status-dot '+(h.online?"online":"")+'"></i>'+(h.archived_at?"Arquivada":h.online?"Recebendo":"Sem envio recente")+'</span></div><h3>'+esc(h.name)+'</h3><p>'+esc(h.species||"Esp\u00e9cie n\u00e3o informada")+' / '+esc(h.location||"Local n\u00e3o informado")+'</p><div class="hive-bottom"><span>'+h.cycle_count+' ciclos / '+h.recording_count+' coletas</span><span>'+(h.unread_alerts?h.unread_alerts+" alerta(s)":"Abrir")+'</span></div><small>Última gravação: '+esc(date(h.latest?.captured_at)||"nenhuma")+'</small></button>').join("") : '<div class="empty">'+(query?"Nenhuma colmeia corresponde à busca.":"Seu apiário começa aqui. Cadastre a primeira colmeia.")+'</div>';
+  const cards=visible.length ? visible.map(h=>'<button class="hive-card '+(h.id===state.hive?"selected":"")+'" data-hive="'+esc(h.id)+'" aria-pressed="'+(h.id===state.hive)+'"><div class="hive-top"><span>'+esc(h.id)+'</span><span><i class="status-dot '+(h.online?"online":"")+'"></i>'+(h.archived_at?"Arquivada":h.online?"Recebendo":"Sem envio recente")+'</span></div><h3>'+esc(h.name)+'</h3><p>'+esc(h.species||"Esp\u00e9cie n\u00e3o informada")+' / '+esc(h.location||"Local n\u00e3o informado")+'</p><div class="hive-bottom"><span>'+h.cycle_count+' ciclos / '+h.recording_count+' coletas</span><span>'+(h.unread_alerts?h.unread_alerts+" alerta(s)":"Abrir")+'</span></div><small>Última gravação: '+esc(date(h.latest?.captured_at)||"nenhuma")+'</small></button>').join("") : '<div class="empty">'+(query?"Nenhuma colmeia corresponde à busca.":"Seu apiário começa aqui. Cadastre a primeira colmeia.")+'</div>';
+  const list=$("hive-list");
+  if(cards!==list.renderedCards){list.innerHTML=cards;list.renderedCards=cards;}
 }
 function renderDetail(){
   const hive=state.hives.find(h=>h.id===state.hive),cycle=currentCycle(),latest=state.records[0];
@@ -123,16 +125,19 @@ function renderAlerts(data){
   }
   state.seen=new Set(data.alerts.map(a=>a.id));
 }
-async function refresh(){
+async function refresh({detailOnly=false}={}){
   const version=++state.version;
+  refreshing=version;
   try{
-    const [hives,alerts,health]=await Promise.all([api("/api/hives"+(state.showArchived?"?include_archived=true":"")),api("/api/alerts"),api("/health")]);
-    if(version!==state.version)return;
-    state.hives=hives.hives;
-    if(!state.hives.some(h=>h.id===state.hive)){state.hive=state.hives[0]?.id || null;state.cycle=null;state.offset=0;}
-    renderHives();renderAlerts(alerts);
-    $("connection").className="connection online";
-    $("connection").innerHTML="<i></i> Conectado · "+esc(health.backend);
+    if(!detailOnly){
+      const [hives,alerts,health]=await Promise.all([api("/api/hives"+(state.showArchived?"?include_archived=true":"")),api("/api/alerts"),api("/health")]);
+      if(version!==state.version)return;
+      state.hives=hives.hives;
+      if(!state.hives.some(h=>h.id===state.hive)){state.hive=state.hives[0]?.id || null;state.cycle=null;state.offset=0;}
+      renderHives();renderAlerts(alerts);
+      $("connection").className="connection online";
+      $("connection").innerHTML="<i></i> Conectado · "+esc(health.backend);
+    }
     errorBanner("");
     if(!state.hive){state.cycles=[];state.records=[];renderDetail();renderTable({recordings:[],total:0});$("inspection-list").innerHTML='<div class="empty">As observações de campo aparecerão aqui.</div>';return;}
     const hive=state.hive;
@@ -152,6 +157,8 @@ async function refresh(){
     $("connection").className="connection";
     $("connection").innerHTML="<i></i> Conexão interrompida";
     errorBanner(error.message+" O painel tentará reconectar automaticamente.");
+  }finally{
+    if(refreshing===version)refreshing=0;
   }
 }
 function showDialog(title,content,kind,submitLabel="Salvar"){
@@ -220,7 +227,28 @@ $("delete-hive").onclick=()=>{
     '<label>Chave administrativa<input type="password" name="delete_key" autocomplete="off" required></label>',
     "hive-delete","Excluir definitivamente");
 };
-$("hive-list").onclick=e=>{const card=e.target.closest("[data-hive]");if(!card)return;stopMic();state.hive=card.dataset.hive;state.cycle=null;state.offset=0;try{localStorage.setItem("beeguard-hive",state.hive);}catch{}refresh();};
+$("hive-list").onclick=e=>{
+  const card=e.target.closest("[data-hive]");
+  if(!card)return;
+  if(card.dataset.hive!==state.hive){
+    stopMic();
+    state.hive=card.dataset.hive;
+    state.cycle=null;
+    state.cycles=[];
+    state.records=[];
+    state.offset=0;
+    try{localStorage.setItem("beeguard-hive",state.hive);}catch{}
+    renderHives();
+    renderDetail();
+    renderTable({recordings:[],total:0});
+    $("recording-summary").textContent="Carregando histórico da colmeia…";
+    $("recording-rows").innerHTML='<tr><td colspan="7" class="empty">Carregando gravações…</td></tr>';
+    $("inspection-list").innerHTML='<div class="empty">Carregando inspeções…</div>';
+    refresh({detailOnly:true});
+  }
+  $("selected-name").focus({preventScroll:true});
+  $("selected-name").scrollIntoView({block:"start"});
+};
 $("cycle-select").onchange=e=>{stopMic();state.cycle=e.target.value;state.offset=0;refresh();};
 $("prev-page").onclick=()=>{state.offset=Math.max(0,state.offset-20);refresh();};
 $("next-page").onclick=()=>{state.offset+=20;refresh();};
@@ -342,4 +370,4 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden)refresh();
 window.addEventListener("online",()=>refresh());
 window.addEventListener("beforeunload",e=>{stopMic();if(state.pending){e.preventDefault();e.returnValue="";}});
 document.querySelectorAll(".nav-item").forEach(link=>link.addEventListener("click",()=>{document.querySelectorAll(".nav-item").forEach(item=>item.classList.remove("active"));link.classList.add("active");}));
-(async function poll(){await refresh();setTimeout(poll,3000);})();
+(async function poll(){if(!refreshing)await refresh();setTimeout(poll,3000);})();
